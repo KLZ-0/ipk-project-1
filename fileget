@@ -86,18 +86,18 @@ class FileGet:
         # receive header
         status_response = cls.receive_header_line(sock).split(" ", 1)
         if status_response[0] != "FSP/1.0":
-            sys.exit(f"Error: Invalid FSP version: {status_response[0]}.")
+            sys.exit(f"Error (FILESERVER): Invalid FSP version: {status_response[0]}.")
         if status_response[1] != "Success":
-            sys.exit(f"Error: Server response: {status_response[1]}.")
+            sys.exit(f"Error (FILESERVER): Server response: {status_response[1]}.")
 
         len_response = cls.receive_header_line(sock).split(":", 1)
         if len_response[0].strip() != "Length":
-            sys.exit(f"Error: Invalid response header: missing 'Length'.")
+            sys.exit(f"Error (FILESERVER): Invalid response header - missing 'Length'.")
 
         try:
             length = int(len_response[1].strip())
         except ValueError:
-            sys.exit(f"Error: Invalid response header: Length is not a valid integer.")
+            sys.exit(f"Error (FILESERVER): Invalid response header - Length is not a valid integer.")
 
         # clear newline
         sock.recv(2)
@@ -143,13 +143,15 @@ class FileGet:
         try:
             data = sock.recvfrom(1024)
         except socket.timeout:
-            sys.exit(f"Error: Timeout of {SOCKET_TIMEOUT} seconds exceeded.")
+            sys.exit(f"Error (NAMESERVER): Timeout of {SOCKET_TIMEOUT} seconds exceeded.")
+        except socket.error as e:
+            sys.exit(f"Error (NAMESERVER): {e}")
 
         sock.close()
 
         message = data[0].decode().split(" ", 1)
         if len(message) != 2 or message[0] != "OK":
-            sys.exit(f"Error: NAMESERVER response: {message[0]}.")
+            sys.exit(f"Error (NAMESERVER): response {message[0]}.")
 
         target = message[1].split(":", 1)
         if len(target) != 2:
@@ -158,13 +160,13 @@ class FileGet:
         try:
             ipaddress.ip_address(target[0])
         except ValueError:
-            sys.exit("Error: NAMESERVER response: IP is invalid.")
+            sys.exit("Error (NAMESERVER): response IP is invalid.")
 
         # convert port to int
         try:
             target = (target[0], int(target[1]))
         except ValueError:
-            sys.exit("Error: NAMESERVER response: server port cannot be converted to an integer.")
+            sys.exit("Error (NAMESERVER): response server port cannot be converted to an integer.")
 
         return target
 
