@@ -1,3 +1,111 @@
 #!/usr/bin/env python3
 
+import socket
+import argparse
+import sys
+
+PROT_PREFIX = "fsp://"
+SOCKET_TIMEOUT = 3
+
+
+class FileGet:
+    # Initialized in reparseArgs
+    arg_ns = None
+    arg_url = None
+
+    def run(self):
+        self.reparse_args()
+
+        target = self.resolve_server_ip(self.arg_url["server"], self.arg_ns)
+
+        print(target)
+
+    def reparse_args(self):
+        """
+        Transforms the parsed args to usable format
+        arg_ns -> tuple(IP : str, PORT : int)
+        arg_url -> dict{"server" : str, "file" : str}
+        :return:
+        """
+
+        # NAMESERVER
+        ns = getattr(self, "raw_arg_ns").split(":")
+        if len(ns) != 2:
+            sys.exit("Error: NAMESERVER must be in the format 'IP:PORT'.")
+
+        # convert port to int
+        try:
+            ns[1] = int(ns[1])
+        except ValueError:
+            sys.exit("Error: NAMESERVER port must be an integer.")
+
+        self.arg_ns = tuple(ns)
+
+        # SURL
+        url = getattr(self, "raw_arg_url")
+        if not url.startswith(PROT_PREFIX):
+            sys.exit(f"Error: SURL must start with '{PROT_PREFIX}'.")
+
+        url = url[len(PROT_PREFIX):].split("/", 1)
+        if len(url) != 2:
+            sys.exit("Error: SURL must be in the format 'fsp://SERVER/FILE'.")
+
+        self.arg_url = {"server": url[0], "file": url[1]}
+
+    @staticmethod
+    def resolve_server_ip(server, nameserver):
+        """
+        Resolves the server IP from the NS
+        :arg server: str - server name to be translated
+        :arg nameserver: tuple(IP : str, PORT : int) - name server address
+        :return: A tuple representing the resolved target (IP : str, PORT : int) or None on error
+        """
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(SOCKET_TIMEOUT)
+        sock.sendto(f"WHEREIS {server}".encode(), nameserver)
+
+        try:
+            data = sock.recvfrom(1024)
+        except socket.timeout:
+            sys.exit(f"Error: Timeout of {SOCKET_TIMEOUT} seconds exceeded.")
+
+        sock.close()
+
+        message = data[0].decode().split(" ", 1)
+        if len(message) != 2 or message[0] != "OK":
+            sys.exit(f"Error: NAMESERVER response: {message[0]}.")
+
+        target = message[1].split(":")
+        if len(target) != 2:
+            return None
+
+        # convert port to int
+        try:
+            target = (target[0], int(target[1]))
+        except ValueError:
+            sys.exit("Error: NAMESERVER response: server port cannot be converted to an integer.")
+
+        return target
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="IPK project 1 - simple FSP protocol")
+
+    parser.add_argument("-n",
+                        metavar="NAMESERVER",
+                        dest="raw_arg_ns",
+                        help="IP address and port of the name server",
+                        type=str,
+                        required=True)
+
+    parser.add_argument("-f",
+                        metavar="SURL",
+                        dest="raw_arg_url",
+                        help="URL of the file to download (the protocol must always be FSP)",
+                        type=str,
+                        required=True)
+
+    fg = FileGet()
+    args = parser.parse_args(namespace=fg)
+    fg.run()
 
