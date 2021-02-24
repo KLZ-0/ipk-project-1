@@ -3,6 +3,7 @@
 import socket
 import argparse
 import sys
+import ipaddress
 
 PROT_PREFIX = "fsp://"
 SOCKET_TIMEOUT = 3
@@ -32,6 +33,11 @@ class FileGet:
         ns = getattr(self, "raw_arg_ns").split(":")
         if len(ns) != 2:
             sys.exit("Error: NAMESERVER must be in the format 'IP:PORT'.")
+
+        try:
+            ipaddress.ip_address(ns[0])
+        except ValueError:
+            sys.exit("Error: NAMESERVER IP is invalid.")
 
         # convert port to int
         try:
@@ -78,6 +84,11 @@ class FileGet:
         target = message[1].split(":")
         if len(target) != 2:
             return None
+
+        try:
+            ipaddress.ip_address(target[0])
+        except ValueError:
+            sys.exit("Error: NAMESERVER response: IP is invalid.")
 
         # convert port to int
         try:
