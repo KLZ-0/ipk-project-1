@@ -8,6 +8,8 @@ import ipaddress
 PROT_PREFIX = "fsp://"
 SOCKET_TIMEOUT = 3
 
+CHUNKSIZE = 2048
+
 
 class FileGet:
     # Initialized in reparseArgs
@@ -19,7 +21,7 @@ class FileGet:
 
         target = self.resolve_server_ip(self.arg_url["server"], self.arg_ns)
 
-        print(target)
+        self.receive_file(target, self.arg_url["file"], self.arg_url["server"])
 
     def reparse_args(self):
         """
@@ -30,7 +32,7 @@ class FileGet:
         """
 
         # NAMESERVER
-        ns = getattr(self, "raw_arg_ns").split(":")
+        ns = getattr(self, "raw_arg_ns").split(":", 1)
         if len(ns) != 2:
             sys.exit("Error: NAMESERVER must be in the format 'IP:PORT'.")
 
@@ -58,6 +60,73 @@ class FileGet:
 
         self.arg_url = {"server": url[0], "file": url[1]}
 
+    @classmethod
+    def receive_file(cls, server, file, hostname):
+        """
+        Receives the file from the server
+        :param server: tuple(IP : str, PORT : int) - server address
+        :param file: str - file name
+        :param hostname: str - hostname of the serwer we are connecting to
+        :return: None
+        """
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect(server)
+
+        msg = "GET test.txt FSP/1.0\r\nHostname: nejaky.muj.server\r\nAgent: xkalaz00\r\n\r\n"
+
+        # send
+        total = 0
+        while total < len(msg):
+            n = sock.send(msg[total:].encode())
+            if n == 0:
+                raise RuntimeError("socket connection broken.")
+            total = total + n
+
+        # receive header
+        status_response = cls.receive_header_line(sock).split(" ", 1)
+        if status_response[0] != "FSP/1.0":
+            sys.exit(f"Error: Invalid FSP version: {status_response[0]}.")
+        if status_response[1] != "Success":
+            sys.exit(f"Error: Server response: {status_response[1]}.")
+
+        len_response = cls.receive_header_line(sock).split(":", 1)
+        if len_response[0].strip() != "Length":
+            sys.exit(f"Error: Invalid response header: missing 'Length'.")
+
+        try:
+            length = int(len_response[1].strip())
+        except ValueError:
+            sys.exit(f"Error: Invalid response header: Length is not a valid integer.")
+
+        # clear newline
+        sock.recv(2)
+
+        # receive content
+        chunks = []
+        total = 0
+        while total < length:
+            chunk = sock.recv(min(length - total, CHUNKSIZE))
+            if chunk == b'':
+                raise RuntimeError("socket connection broken")
+            chunks.append(chunk)
+            total = total + len(chunk)
+
+        sock.close()
+
+        with open(file, "wb") as f:
+            for chunk in chunks:
+                f.write(chunk)
+
+    @staticmethod
+    def receive_header_line(sock):
+        ret = ""
+        while True:
+            rcv = sock.recv(1).decode()
+            if rcv == "\r":
+                sock.recv(1)
+                return ret
+            ret += rcv
+
     @staticmethod
     def resolve_server_ip(server, nameserver):
         """
@@ -81,7 +150,7 @@ class FileGet:
         if len(message) != 2 or message[0] != "OK":
             sys.exit(f"Error: NAMESERVER response: {message[0]}.")
 
-        target = message[1].split(":")
+        target = message[1].split(":", 1)
         if len(target) != 2:
             return None
 
