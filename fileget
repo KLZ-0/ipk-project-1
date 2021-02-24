@@ -71,14 +71,22 @@ class FileGet:
         :return: None
         """
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(server)
+        sock.settimeout(SOCKET_TIMEOUT)
+        try:
+            sock.connect(server)
+        except socket.error as e:
+            sys.exit(f"Error (FILESERVER): {e}")
 
         msg = f"GET {file} FSP/1.0\r\nHostname: {hostname}\r\nAgent: {AGENT}\r\n\r\n"
 
         # send
         total = 0
         while total < len(msg):
-            n = sock.send(msg[total:].encode())
+            try:
+                n = sock.send(msg[total:].encode())
+            except socket.error as e:
+                sys.exit(f"Error (FILESERVER - send): {e}")
+
             if n == 0:
                 raise RuntimeError("socket connection broken.")
             total = total + n
@@ -100,17 +108,28 @@ class FileGet:
             sys.exit(f"Error (FILESERVER): Invalid response header - Length is not a valid integer.")
 
         # clear newline
-        sock.recv(2)
+        try:
+            sock.recv(2)
+        except socket.timeout:
+            sys.exit(f"Error (FILESERVER - receive newline): Timeout of {SOCKET_TIMEOUT} seconds exceeded.")
+        except socket.error as e:
+            sys.exit(f"Error (FILESERVER - receive newline): {e}")
 
         # receive content
         chunks = []
         total = 0
-        while total < length:
-            chunk = sock.recv(min(length - total, CHUNKSIZE))
-            if chunk == b'':
-                raise RuntimeError("socket connection broken")
-            chunks.append(chunk)
-            total = total + len(chunk)
+
+        try:
+            while total < length:
+                chunk = sock.recv(min(length - total, CHUNKSIZE))
+                if chunk == b'':
+                    sys.exit(f"Error (FILESERVER - receive): Connection broken")
+                chunks.append(chunk)
+                total = total + len(chunk)
+        except socket.timeout:
+            sys.exit(f"Error (FILESERVER - receive): Timeout of {SOCKET_TIMEOUT} seconds exceeded.")
+        except socket.error as e:
+            sys.exit(f"Error (FILESERVER - receive): {e}")
 
         sock.close()
 
@@ -120,13 +139,18 @@ class FileGet:
 
     @staticmethod
     def receive_header_line(sock):
-        ret = ""
-        while True:
-            rcv = sock.recv(1).decode()
-            if rcv == "\r":
-                sock.recv(1)
-                return ret
-            ret += rcv
+        try:
+            ret = ""
+            while True:
+                rcv = sock.recv(1).decode()
+                if rcv == "\r":
+                    sock.recv(1)
+                    return ret
+                ret += rcv
+        except socket.timeout:
+            sys.exit(f"Error (FILESERVER - receive header): Timeout of {SOCKET_TIMEOUT} seconds exceeded.")
+        except socket.error as e:
+            sys.exit(f"Error (FILESERVER - receive header): {e}")
 
     @staticmethod
     def resolve_server_ip(server, nameserver):
@@ -138,9 +162,9 @@ class FileGet:
         """
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(SOCKET_TIMEOUT)
-        sock.sendto(f"WHEREIS {server}".encode(), nameserver)
 
         try:
+            sock.sendto(f"WHEREIS {server}".encode(), nameserver)
             data = sock.recvfrom(1024)
         except socket.timeout:
             sys.exit(f"Error (NAMESERVER): Timeout of {SOCKET_TIMEOUT} seconds exceeded.")
