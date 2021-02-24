@@ -9,6 +9,7 @@ PROT_PREFIX = "fsp://"
 SOCKET_TIMEOUT = 3
 
 CHUNKSIZE = 2048
+AGENT = "xkalaz00"
 
 
 class FileGet:
@@ -72,7 +73,7 @@ class FileGet:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(server)
 
-        msg = "GET test.txt FSP/1.0\r\nHostname: nejaky.muj.server\r\nAgent: xkalaz00\r\n\r\n"
+        msg = f"GET {file} FSP/1.0\r\nHostname: {hostname}\r\nAgent: {AGENT}\r\n\r\n"
 
         # send
         total = 0
