@@ -4,6 +4,8 @@ import socket
 import argparse
 import sys
 import ipaddress
+from os import makedirs
+from os.path import dirname
 
 PROT_PREFIX = "fsp://"
 SOCKET_TIMEOUT = 3
@@ -120,26 +122,17 @@ class FileGet:
 
         return chunks
 
-    @classmethod
-    def receive_file(cls, sock: socket.socket, request_message: str):
-        # send
-        cls.ask_for_file(sock, request_message)
+    @staticmethod
+    def write_file(fname: str, chunks: list):
+        if dirname(fname) != "":
+            makedirs(dirname(fname), exist_ok=True)
 
-        # receive header
-        length = cls.receive_length(sock)
-
-        # receive content
-        return cls.receive_content(sock, length)
+        with open(fname, "wb") as f:
+            for chunk in chunks:
+                f.write(chunk)
 
     @classmethod
-    def download_structure(cls, server: tuple, file: str, hostname: str):
-        """
-        Receives the file from the server
-        :param server: tuple(IP : str, PORT : int) - server address
-        :param file: str - file name
-        :param hostname: str - hostname of the serwer we are connecting to
-        :return: None
-        """
+    def receive_file(cls, server: tuple, fname: str, write_to_file: bool = False):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(SOCKET_TIMEOUT)
         try:
@@ -147,13 +140,41 @@ class FileGet:
         except socket.error as e:
             sys.exit(f"Error (FILESERVER): {e}")
 
-        msg = f"GET {file} FSP/1.0\r\nHostname: {hostname}\r\nAgent: {AGENT}\r\n\r\n"
-        chunks = cls.receive_file(sock, msg)
-        with open(file, "wb") as f:
-            for chunk in chunks:
-                f.write(chunk)
+        # send
+        request_message = f"GET {fname} FSP/1.0\r\nHostname: {socket.getfqdn()}\r\nAgent: {AGENT}\r\n\r\n"
+        cls.ask_for_file(sock, request_message)
 
+        # receive header
+        length = cls.receive_length(sock)
+
+        # receive content
+        chunks = cls.receive_content(sock, length)
+
+        # close the socket
         sock.close()
+
+        # optionally write to fs
+        if write_to_file:
+            cls.write_file(fname, chunks)
+
+        return chunks
+
+    @classmethod
+    def download_structure(cls, server: tuple, fname: str, hostname: str):
+        """
+        Receives the file from the server
+        :param server: tuple(IP : str, PORT : int) - server address
+        :param fname: str - file name
+        :param hostname: str - hostname of the serwer we are connecting to
+        :return: None
+        """
+        if fname.endswith("*"):
+            index = cls.receive_file(server, "index")
+            for fname in b"".join(index).decode().split():
+                # TODO: Download for only a ceratin subdirectory
+                cls.receive_file(server, fname, write_to_file=True)
+        else:
+            cls.receive_file(server, fname, write_to_file=True)
 
     @staticmethod
     def receive_header_line(sock: socket.socket):
