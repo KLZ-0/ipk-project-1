@@ -22,7 +22,7 @@ class FileGet:
 
         target = self.resolve_server_ip(self.arg_url["server"], self.arg_ns)
 
-        self.receive_file(target, self.arg_url["file"], self.arg_url["server"])
+        self.download_structure(target, self.arg_url["file"], self.arg_url["server"])
 
     def reparse_args(self):
         """
@@ -61,25 +61,8 @@ class FileGet:
 
         self.arg_url = {"server": url[0], "file": url[1]}
 
-    @classmethod
-    def receive_file(cls, server, file, hostname):
-        """
-        Receives the file from the server
-        :param server: tuple(IP : str, PORT : int) - server address
-        :param file: str - file name
-        :param hostname: str - hostname of the serwer we are connecting to
-        :return: None
-        """
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(SOCKET_TIMEOUT)
-        try:
-            sock.connect(server)
-        except socket.error as e:
-            sys.exit(f"Error (FILESERVER): {e}")
-
-        msg = f"GET {file} FSP/1.0\r\nHostname: {hostname}\r\nAgent: {AGENT}\r\n\r\n"
-
-        # send
+    @staticmethod
+    def ask_for_file(sock, msg):
         total = 0
         while total < len(msg):
             try:
@@ -88,10 +71,11 @@ class FileGet:
                 sys.exit(f"Error (FILESERVER - send): {e}")
 
             if n == 0:
-                raise RuntimeError("socket connection broken.")
+                sys.exit("Error (FILESERVER) - socket connection broken.")
             total = total + n
 
-        # receive header
+    @classmethod
+    def receive_length(cls, sock):
         status_response = cls.receive_header_line(sock).split(" ", 1)
         if status_response[0] != "FSP/1.0":
             sys.exit(f"Error (FILESERVER): Invalid FSP version: {status_response[0]}.")
@@ -115,7 +99,10 @@ class FileGet:
         except socket.error as e:
             sys.exit(f"Error (FILESERVER - receive newline): {e}")
 
-        # receive content
+        return length
+
+    @staticmethod
+    def receive_content(sock, length):
         chunks = []
         total = 0
 
@@ -130,6 +117,35 @@ class FileGet:
             sys.exit(f"Error (FILESERVER - receive): Timeout of {SOCKET_TIMEOUT} seconds exceeded.")
         except socket.error as e:
             sys.exit(f"Error (FILESERVER - receive): {e}")
+
+        return chunks
+
+    @classmethod
+    def download_structure(cls, server, file, hostname):
+        """
+        Receives the file from the server
+        :param server: tuple(IP : str, PORT : int) - server address
+        :param file: str - file name
+        :param hostname: str - hostname of the serwer we are connecting to
+        :return: None
+        """
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(SOCKET_TIMEOUT)
+        try:
+            sock.connect(server)
+        except socket.error as e:
+            sys.exit(f"Error (FILESERVER): {e}")
+
+        msg = f"GET {file} FSP/1.0\r\nHostname: {hostname}\r\nAgent: {AGENT}\r\n\r\n"
+
+        # send
+        cls.ask_for_file(sock, msg)
+
+        # receive header
+        length = cls.receive_length(sock)
+
+        # receive content
+        chunks = cls.receive_content(sock, length)
 
         sock.close()
 
@@ -215,4 +231,3 @@ if __name__ == '__main__':
     fg = FileGet()
     args = parser.parse_args(namespace=fg)
     fg.run()
-
