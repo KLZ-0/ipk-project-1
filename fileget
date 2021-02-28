@@ -62,7 +62,7 @@ class FileGet:
         self.arg_url = {"server": url[0], "file": url[1]}
 
     @staticmethod
-    def ask_for_file(sock, msg):
+    def ask_for_file(sock: socket.socket, msg: str):
         total = 0
         while total < len(msg):
             try:
@@ -75,7 +75,7 @@ class FileGet:
             total = total + n
 
     @classmethod
-    def receive_length(cls, sock):
+    def receive_length(cls, sock: socket.socket):
         status_response = cls.receive_header_line(sock).split(" ", 1)
         if status_response[0] != "FSP/1.0":
             sys.exit(f"Error (FILESERVER): Invalid FSP version: {status_response[0]}.")
@@ -102,7 +102,7 @@ class FileGet:
         return length
 
     @staticmethod
-    def receive_content(sock, length):
+    def receive_content(sock: socket.socket, length: int):
         chunks = []
         total = 0
 
@@ -121,7 +121,18 @@ class FileGet:
         return chunks
 
     @classmethod
-    def download_structure(cls, server, file, hostname):
+    def receive_file(cls, sock: socket.socket, request_message: str):
+        # send
+        cls.ask_for_file(sock, request_message)
+
+        # receive header
+        length = cls.receive_length(sock)
+
+        # receive content
+        return cls.receive_content(sock, length)
+
+    @classmethod
+    def download_structure(cls, server: tuple, file: str, hostname: str):
         """
         Receives the file from the server
         :param server: tuple(IP : str, PORT : int) - server address
@@ -137,24 +148,15 @@ class FileGet:
             sys.exit(f"Error (FILESERVER): {e}")
 
         msg = f"GET {file} FSP/1.0\r\nHostname: {hostname}\r\nAgent: {AGENT}\r\n\r\n"
-
-        # send
-        cls.ask_for_file(sock, msg)
-
-        # receive header
-        length = cls.receive_length(sock)
-
-        # receive content
-        chunks = cls.receive_content(sock, length)
-
-        sock.close()
-
+        chunks = cls.receive_file(sock, msg)
         with open(file, "wb") as f:
             for chunk in chunks:
                 f.write(chunk)
 
+        sock.close()
+
     @staticmethod
-    def receive_header_line(sock):
+    def receive_header_line(sock: socket.socket):
         try:
             ret = ""
             while True:
@@ -169,7 +171,7 @@ class FileGet:
             sys.exit(f"Error (FILESERVER - receive header): {e}")
 
     @staticmethod
-    def resolve_server_ip(server, nameserver):
+    def resolve_server_ip(server: str, nameserver: tuple):
         """
         Resolves the server IP from the NS
         :arg server: str - server name to be translated
