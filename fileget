@@ -175,7 +175,7 @@ class FileGet:
 
         message = data[0].decode().split(" ", 1)
         if len(message) != 2 or message[0] != "OK":
-            sys.exit(f"Error (NAMESERVER): response {message[0]}.")
+            sys.exit(f"Error (NAMESERVER): Server response: {message[1]}.")
 
         target = message[1].split(":", 1)
         if len(target) != 2:
