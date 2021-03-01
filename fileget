@@ -132,7 +132,7 @@ class FileGet:
                 f.write(chunk)
 
     @classmethod
-    def receive_file(cls, server: tuple, fname: str, write_to_file: bool = False):
+    def receive_file(cls, server: tuple, fname: str, write_to_file: bool = False, real_path: str = None):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(SOCKET_TIMEOUT)
         try:
@@ -155,7 +155,7 @@ class FileGet:
 
         # optionally write to fs
         if write_to_file:
-            cls.write_file(fname, chunks)
+            cls.write_file(fname if real_path is None else real_path, chunks)
 
         return chunks
 
@@ -170,9 +170,9 @@ class FileGet:
         """
         if fname.endswith("*"):
             index = cls.receive_file(server, "index")
-            for fname in b"".join(index).decode().split():
-                # TODO: Download for only a ceratin subdirectory
-                cls.receive_file(server, fname, write_to_file=True)
+            for fname_d in b"".join(index).decode().split():
+                if fname_d.startswith(fname[:-1]):
+                    cls.receive_file(server, fname_d, write_to_file=True, real_path=fname_d[len(fname[:-1]):])
         else:
             cls.receive_file(server, fname, write_to_file=True)
 
